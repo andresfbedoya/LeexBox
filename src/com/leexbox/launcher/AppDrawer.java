@@ -311,6 +311,7 @@ final class AppDrawer {
         private float downY;
         private float startAlong;
         private boolean dragging;
+        private boolean header;
         private VelocityTracker tracker;
 
         DragLayout(Context c) {
@@ -334,12 +335,12 @@ final class AppDrawer {
         private boolean closeIntent(MotionEvent e) {
             float dx = e.getRawX() - downX;
             float dy = e.getRawY() - downY;
-            float min = slop * 1.5f;
+            float min = slop * 0.6f;
             switch (prefs.drawerAnim()) {
-                case "top": return -dy > min && -dy > Math.abs(dx) * 1.5f && !list.canScrollVertically(1);
-                case "left": return -dx > min && -dx > Math.abs(dy) * 1.5f;
-                case "right": return dx > min && dx > Math.abs(dy) * 1.5f;
-                default: return dy > min && dy > Math.abs(dx) * 1.5f && !list.canScrollVertically(-1);
+                case "top": return -dy > min && -dy > Math.abs(dx) && !list.canScrollVertically(1);
+                case "left": return -dx > min && -dx > Math.abs(dy);
+                case "right": return dx > min && dx > Math.abs(dy);
+                default: return dy > min && dy > Math.abs(dx) && (header || !list.canScrollVertically(-1));
             }
         }
 
@@ -358,6 +359,7 @@ final class AppDrawer {
                 case MotionEvent.ACTION_DOWN:
                     downX = e.getRawX();
                     downY = e.getRawY();
+                    header = e.getY() < Ui.dp(act, 100);
                     dragging = false;
                     if (tracker != null) tracker.recycle();
                     tracker = VelocityTracker.obtain();
@@ -391,8 +393,8 @@ final class AppDrawer {
                     dragging = false;
                     tracker.computeCurrentVelocity(1000);
                     float v = closingVelocity();
-                    boolean shut = t > 0.35f || v > 900f;
-                    if (v < -900f) shut = false;
+                    boolean shut = t > 0.1f || v > 300f;
+                    if (v < -700f) shut = false;
                     if (shut) {
                         closing = true;
                         animateTo(1f, AppDrawer.this::removeNow);

@@ -168,7 +168,7 @@ public class HomeActivity extends Activity {
         if (drawer.isShown()) {
             drawer.close();
         } else if (settings.isShown()) {
-            settings.hide();
+            settings.back();
         } else if (pager.isEditing()) {
             exitEdit();
         }
@@ -251,9 +251,19 @@ public class HomeActivity extends Activity {
     void setIconPack(String pkg) {
         prefs.iconPack(pkg);
         icons.load(pkg);
+        refreshIcons();
+    }
+
+    void refreshIcons() {
         dock.refresh(palette);
         pager.reload();
         drawer.apply(palette);
+    }
+
+    void setGrid(int cols, int rows) {
+        prefs.grid(cols, rows);
+        pager.regrid();
+        settings.apply(palette);
     }
 
     void setStats(boolean on) {

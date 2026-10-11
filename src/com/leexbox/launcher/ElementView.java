@@ -172,12 +172,14 @@ final class ElementView extends FrameLayout {
                 case MotionEvent.ACTION_CANCEL:
                     item.x = clamp(baseX + ElementView.this.getTranslationX() / pw, 0f, 1f - item.w);
                     item.y = clamp(baseY + ElementView.this.getTranslationY() / ph, 0f, 1f - item.h);
-                    ElementView.this.setTranslationX(0f);
-                    ElementView.this.setTranslationY(0f);
-                    ElementView.this.animate().scaleX(1f).scaleY(1f).setDuration(140)
-                            .setInterpolator(Ui.ease(getContext())).start();
-                    page.requestLayout();
+                    float ox = item.x;
+                    float oy = item.y;
                     host.onChanged(item);
+                    ElementView.this.setTranslationX((ox - item.x) * pw);
+                    ElementView.this.setTranslationY((oy - item.y) * ph);
+                    ElementView.this.animate().translationX(0f).translationY(0f).scaleX(1f).scaleY(1f)
+                            .setDuration(220).setInterpolator(Ui.ease(getContext())).start();
+                    page.requestLayout();
                     return true;
                 default:
                     return true;

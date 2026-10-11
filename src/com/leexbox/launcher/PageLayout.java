@@ -1,6 +1,8 @@
 package com.leexbox.launcher;
 
 import android.content.Context;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.view.View;
 import android.widget.FrameLayout;
 
@@ -14,10 +16,32 @@ final class PageLayout extends FrameLayout {
         }
     }
 
+    private final Paint dot = new Paint(Paint.ANTI_ALIAS_FLAG);
     private boolean focusTerminal;
+    private int gridCols;
+    private int gridRows;
+
+    void setGrid(int cols, int rows, int color) {
+        gridCols = cols;
+        gridRows = rows;
+        dot.setColor(color);
+        invalidate();
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        if (gridCols <= 0 || gridRows <= 0) return;
+        float r = getResources().getDisplayMetrics().density * 1.6f;
+        for (int row = 0; row <= gridRows; row++) {
+            for (int col = 0; col <= gridCols; col++) {
+                canvas.drawCircle(col * (getWidth() - 1f) / gridCols, row * (getHeight() - 1f) / gridRows, r, dot);
+            }
+        }
+    }
 
     PageLayout(Context c) {
         super(c);
+        setWillNotDraw(false);
     }
 
     void setFocusTerminal(boolean on) {

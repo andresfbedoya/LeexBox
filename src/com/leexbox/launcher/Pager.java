@@ -19,6 +19,7 @@ import java.util.List;
 
 final class Pager implements ElementView.Host {
     private final HomeActivity act;
+    private final Prefs prefs;
     private final AppIndex apps;
     private final IconProvider icons;
     private final Screens screens;
@@ -42,6 +43,7 @@ final class Pager implements ElementView.Host {
     Pager(HomeActivity act, Prefs prefs, AppIndex apps, IconProvider icons,
           TerminalModule terminal, StatsModule stats, WidgetsModule widgets) {
         this.act = act;
+        this.prefs = prefs;
         this.apps = apps;
         this.icons = icons;
         this.terminal = terminal;
@@ -121,6 +123,7 @@ final class Pager implements ElementView.Host {
             for (int i = 0; i < pageView.getChildCount(); i++) {
                 ((ElementView) pageView.getChildAt(i)).setEditing(on, p.primary);
             }
+            pageView.setGrid(on ? prefs.gridCols() : 0, prefs.gridRows(), Ui.alpha(p.textDim, 0x80));
         }
         updateCounter();
     }
@@ -178,13 +181,28 @@ final class Pager implements ElementView.Host {
         return ids;
     }
 
+    void regrid() {
+        screens.snapAll(prefs.gridCols(), prefs.gridRows());
+        reload();
+    }
+
     void addWidget(int id, AppWidgetProviderInfo info) {
         float pw = Math.max(1f, root.getWidth());
         float ph = Math.max(1f, root.getHeight());
-        float w = Math.min(0.96f, Math.max(0.25f, info.minWidth / pw));
-        float h = Math.min(0.9f, Math.max(0.1f, info.minHeight / ph));
-        Screens.Item it = new Screens.Item("widget", id, "", (1f - w) / 2f, 0.08f, w, h);
-        if (it.y + it.h > 1f) it.y = 1f - it.h;
+        int cols = prefs.gridCols();
+        int rows = prefs.gridRows();
+        Screens.Item it;
+        if (cols > 0 && rows > 0) {
+            int wc = Math.max(1, Math.min(cols, (int) Math.ceil(info.minWidth / (pw / cols))));
+            int hc = Math.max(1, Math.min(rows, (int) Math.ceil(info.minHeight / (ph / rows))));
+            float[] pos = screens.firstFree(screens.page(), cols, rows, wc, hc);
+            it = new Screens.Item("widget", id, "", pos[0], pos[1], wc / (float) cols, hc / (float) rows);
+        } else {
+            float w = Math.min(0.96f, Math.max(0.25f, info.minWidth / pw));
+            float h = Math.min(0.9f, Math.max(0.1f, info.minHeight / ph));
+            it = new Screens.Item("widget", id, "", (1f - w) / 2f, 0.08f, w, h);
+            if (it.y + it.h > 1f) it.y = 1f - it.h;
+        }
         screens.page().add(it);
         screens.save();
         reload();
@@ -194,12 +212,20 @@ final class Pager implements ElementView.Host {
         DisplayMetrics dm = act.getResources().getDisplayMetrics();
         float pw = Math.max(1f, root.getWidth());
         float ph = Math.max(1f, root.getHeight());
-        float w = Math.min(0.4f, 84f * dm.density / pw);
-        float h = Math.min(0.3f, 92f * dm.density / ph);
-        int n = screens.count("app", screens.page());
-        float x = Math.min(1f - w, 0.04f + (n % 4) * (w + 0.02f));
-        float y = Math.min(1f - h, 0.1f + (n / 4) * (h + 0.02f));
-        screens.page().add(new Screens.Item("app", -1, pkg, x, y, w, h));
+        int cols = prefs.gridCols();
+        int rows = prefs.gridRows();
+        Screens.Item it;
+        if (cols > 0 && rows > 0) {
+            float[] pos = screens.firstFree(screens.page(), cols, rows, 1, 1);
+            it = new Screens.Item("app", -1, pkg, pos[0], pos[1], 1f / cols, 1f / rows);
+        } else {
+            float w = Math.min(0.4f, 84f * dm.density / pw);
+            float h = Math.min(0.3f, 92f * dm.density / ph);
+            int n = screens.count("app", screens.page());
+            it = new Screens.Item("app", -1, pkg, Math.min(1f - w, 0.04f + (n % 4) * (w + 0.02f)),
+                    Math.min(1f - h, 0.1f + (n / 4) * (h + 0.02f)), w, h);
+        }
+        screens.page().add(it);
         screens.save();
         reload();
     }
@@ -226,6 +252,7 @@ final class Pager implements ElementView.Host {
 
     @Override
     public void onChanged(Screens.Item item) {
+        screens.snap(item, prefs.gridCols(), prefs.gridRows());
         screens.save();
         sizeWidgets();
     }
@@ -276,6 +303,11 @@ final class Pager implements ElementView.Host {
         }
         if (pruned) screens.save();
         page.setFocusTerminal(ime && index == screens.current);
+        page.setGrid(editing ? prefs.gridCols() : 0, prefs.gridRows(), Ui.alpha(p.textDim, 0x80));
+        page.setOnLongClickListener(v -> {
+            if (!editing) act.showSettings();
+            return true;
+        });
         return page;
     }
 
@@ -301,7 +333,9 @@ final class Pager implements ElementView.Host {
         cell.setGravity(Gravity.CENTER);
         ImageView icon = new ImageView(act);
         icon.setImageDrawable(icons.get(app, p));
-        cell.addView(icon, new LinearLayout.LayoutParams(Ui.dp(act, 52), Ui.dp(act, 52)));
+        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        icon.setPadding(Ui.dp(act, 6), Ui.dp(act, 6), Ui.dp(act, 6), 0);
+        cell.addView(icon, new LinearLayout.LayoutParams(-1, 0, 1f));
         TextView label = Ui.text(act, app.label, 11, p.text);
         label.setGravity(Gravity.CENTER);
         label.setMaxLines(1);

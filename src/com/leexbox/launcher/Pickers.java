@@ -126,6 +126,19 @@ final class Pickers {
                 .show();
     }
 
+    static String gridLabel(Prefs prefs) {
+        return prefs.gridCols() <= 0 ? "Libre" : prefs.gridCols() + " × " + prefs.gridRows();
+    }
+
+    static void grid(HomeActivity act) {
+        String[] labels = {"Libre (sin cuadrícula)", "4 × 6", "4 × 8", "5 × 8", "5 × 10", "6 × 10"};
+        int[][] values = {{0, 0}, {4, 6}, {4, 8}, {5, 8}, {5, 10}, {6, 10}};
+        new AlertDialog.Builder(act)
+                .setTitle("Cuadrícula (columnas × filas)")
+                .setItems(labels, (d, i) -> act.setGrid(values[i][0], values[i][1]))
+                .show();
+    }
+
     static void drawerAnim(HomeActivity act) {
         String[] labels = {"Desde abajo", "Desde arriba", "Desde la izquierda", "Desde la derecha"};
         String[] values = {"bottom", "top", "left", "right"};

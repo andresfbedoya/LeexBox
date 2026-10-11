@@ -83,6 +83,7 @@ final class IconProvider {
         if (packed != null) return packed;
 
         Drawable d = apps.icon(app);
+        if (!prefs.themedIcons()) return d;
         if (d instanceof AdaptiveIconDrawable) {
             AdaptiveIconDrawable ad = (AdaptiveIconDrawable) d;
             Drawable layer = null;

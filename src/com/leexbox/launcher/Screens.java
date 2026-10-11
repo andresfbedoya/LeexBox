@@ -105,6 +105,49 @@ final class Screens {
         save();
     }
 
+    void snap(Item it, int cols, int rows) {
+        if (cols <= 0 || rows <= 0) return;
+        float cw = 1f / cols;
+        float ch = 1f / rows;
+        if (it.kind.equals("app")) {
+            it.w = cw;
+            it.h = ch;
+        } else {
+            it.w = Math.max(cw, Math.min(1f, Math.round(it.w / cw) * cw));
+            it.h = Math.max(ch, Math.min(1f, Math.round(it.h / ch) * ch));
+        }
+        it.x = Math.max(0f, Math.min(1f - it.w, Math.round(it.x / cw) * cw));
+        it.y = Math.max(0f, Math.min(1f - it.h, Math.round(it.y / ch) * ch));
+    }
+
+    void snapAll(int cols, int rows) {
+        for (List<Item> page : pages) {
+            for (Item it : page) snap(it, cols, rows);
+        }
+        save();
+    }
+
+    float[] firstFree(List<Item> page, int cols, int rows, int wc, int hc) {
+        float w = wc / (float) cols;
+        float h = hc / (float) rows;
+        for (int r = 0; r + hc <= rows; r++) {
+            for (int c = 0; c + wc <= cols; c++) {
+                float x = c / (float) cols;
+                float y = r / (float) rows;
+                boolean free = true;
+                for (Item it : page) {
+                    if (x < it.x + it.w - 0.001f && x + w > it.x + 0.001f
+                            && y < it.y + it.h - 0.001f && y + h > it.y + 0.001f) {
+                        free = false;
+                        break;
+                    }
+                }
+                if (free) return new float[]{x, y};
+            }
+        }
+        return new float[]{0f, 0f};
+    }
+
     List<Integer> reset() {
         List<Integer> ids = new ArrayList<>();
         for (List<Item> page : pages) {

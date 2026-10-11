@@ -52,6 +52,13 @@ final class Prefs {
     boolean tintFallback() { return sp.getBoolean("tint_fallback", true); }
     void tintFallback(boolean v) { sp.edit().putBoolean("tint_fallback", v).apply(); }
 
+    boolean themedIcons() { return sp.getBoolean("themed_icons", false); }
+    void themedIcons(boolean v) { sp.edit().putBoolean("themed_icons", v).apply(); }
+
+    int gridCols() { return sp.getInt("grid_cols", 4); }
+    int gridRows() { return sp.getInt("grid_rows", 8); }
+    void grid(int cols, int rows) { sp.edit().putInt("grid_cols", cols).putInt("grid_rows", rows).apply(); }
+
     String iconPack() { return sp.getString("icon_pack", ""); }
     void iconPack(String v) { sp.edit().putString("icon_pack", v).apply(); }
 

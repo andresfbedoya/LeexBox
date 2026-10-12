@@ -11,7 +11,7 @@ final class Screens {
     static final class Item {
         final String kind;
         final int widgetId;
-        final String data;
+        String data;
         float x;
         float y;
         float w;

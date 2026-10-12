@@ -151,6 +151,7 @@ final class ElementView extends FrameLayout {
             if (page == null) return true;
             float pw = Math.max(1, page.getWidth());
             float ph = Math.max(1, page.getHeight());
+            float sc = Math.max(0.1f, page.getScaleX());
             switch (e.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     startX = e.getRawX();
@@ -162,8 +163,8 @@ final class ElementView extends FrameLayout {
                             .setInterpolator(Ui.ease(getContext())).start();
                     return true;
                 case MotionEvent.ACTION_MOVE: {
-                    float nx = clamp(baseX + (e.getRawX() - startX) / pw, 0f, 1f - item.w);
-                    float ny = clamp(baseY + (e.getRawY() - startY) / ph, 0f, 1f - item.h);
+                    float nx = clamp(baseX + (e.getRawX() - startX) / (pw * sc), 0f, 1f - item.w);
+                    float ny = clamp(baseY + (e.getRawY() - startY) / (ph * sc), 0f, 1f - item.h);
                     ElementView.this.setTranslationX((nx - baseX) * pw);
                     ElementView.this.setTranslationY((ny - baseY) * ph);
                     return true;
@@ -191,6 +192,7 @@ final class ElementView extends FrameLayout {
             if (page == null) return true;
             float pw = Math.max(1, page.getWidth());
             float ph = Math.max(1, page.getHeight());
+            float sc = Math.max(0.1f, page.getScaleX());
             switch (e.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     getParent().requestDisallowInterceptTouchEvent(true);
@@ -200,8 +202,8 @@ final class ElementView extends FrameLayout {
                     baseH = item.h;
                     return true;
                 case MotionEvent.ACTION_MOVE:
-                    item.w = clamp(baseW + (e.getRawX() - startX) / pw, item.minW(), 1f - item.x);
-                    item.h = clamp(baseH + (e.getRawY() - startY) / ph, item.minH(), 1f - item.y);
+                    item.w = clamp(baseW + (e.getRawX() - startX) / (pw * sc), item.minW(), 1f - item.x);
+                    item.h = clamp(baseH + (e.getRawY() - startY) / (ph * sc), item.minH(), 1f - item.y);
                     page.requestLayout();
                     return true;
                 case MotionEvent.ACTION_UP:

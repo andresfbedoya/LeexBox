@@ -3,6 +3,7 @@ package com.leexbox.launcher;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.FrameLayout;
 
@@ -17,7 +18,17 @@ final class PageLayout extends FrameLayout {
     }
 
     private final Paint dot = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private boolean passive;
     private boolean focusTerminal;
+
+    void setPassive(boolean on) {
+        passive = on;
+    }
+
+    @Override
+    public boolean onInterceptTouchEvent(MotionEvent e) {
+        return passive;
+    }
     private int gridCols;
     private int gridRows;
 

@@ -1,14 +1,18 @@
 package com.leexbox.launcher;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.role.RoleManager;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProviderInfo;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Insets;
+import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.view.Gravity;
@@ -18,10 +22,14 @@ import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.util.List;
 
 public class HomeActivity extends Activity {
@@ -29,6 +37,7 @@ public class HomeActivity extends Activity {
     private static final int REQ_CONFIG = 11;
     private static final int REQ_HOME = 12;
     private static final int REQ_RECONFIG = 13;
+    private static final int REQ_ICON = 14;
     private static final int MODE_NONE = 0;
     private static final int MODE_DRAWER = 1;
     private static final int MODE_PAGE = 2;
@@ -50,6 +59,7 @@ public class HomeActivity extends Activity {
     private boolean imeVisible;
     private int pendingWidget = -1;
     private AppWidgetProviderInfo pendingInfo;
+    private Screens.Item pendingIcon;
     private VelocityTracker velocity;
     private int dragMode;
     private boolean drawerCandidate;
@@ -200,6 +210,13 @@ public class HomeActivity extends Activity {
             pager.reload();
             return;
         }
+        if (request == REQ_ICON) {
+            if (result == RESULT_OK && data != null && data.getData() != null && pendingIcon != null) {
+                storeIcon(pendingIcon, data.getData());
+            }
+            pendingIcon = null;
+            return;
+        }
         if ((request != REQ_BIND && request != REQ_CONFIG) || pendingWidget < 0) return;
         if (result != RESULT_OK) {
             widgets.delete(pendingWidget);
@@ -319,6 +336,106 @@ public class HomeActivity extends Activity {
         recreate();
     }
 
+    void appMenu(Screens.Item item) {
+        Shortcut sc = Shortcut.parse(item.data);
+        AppIndex.App app = apps.byPackage(sc.pkg);
+        String name = app == null ? sc.pkg : (sc.label.isEmpty() ? app.label : sc.label);
+        new AlertDialog.Builder(this)
+                .setTitle(name)
+                .setItems(new String[]{"Cambiar nombre", "Cambiar ícono", "Información de la app",
+                        "Desinstalar", "Quitar de la pantalla"}, (d, i) -> {
+                    switch (i) {
+                        case 0:
+                            renameShortcut(item, sc, app);
+                            break;
+                        case 1:
+                            iconMenu(item, sc);
+                            break;
+                        case 2:
+                            startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.parse("package:" + sc.pkg)));
+                            break;
+                        case 3:
+                            startActivity(new Intent(Intent.ACTION_DELETE, Uri.parse("package:" + sc.pkg)));
+                            break;
+                        default:
+                            pager.removeItem(item);
+                            break;
+                    }
+                })
+                .show();
+    }
+
+    private void renameShortcut(Screens.Item item, Shortcut sc, AppIndex.App app) {
+        EditText input = new EditText(this);
+        input.setSingleLine(true);
+        input.setText(sc.label.isEmpty() && app != null ? app.label : sc.label);
+        input.setSelectAllOnFocus(true);
+        new AlertDialog.Builder(this)
+                .setTitle("Cambiar nombre")
+                .setView(input)
+                .setPositiveButton("Guardar", (d, w) -> {
+                    String value = input.getText().toString().trim();
+                    boolean same = app != null && value.equals(app.label);
+                    item.data = sc.withLabel(same ? "" : value).encode();
+                    pager.commit();
+                })
+                .setNegativeButton("Cancelar", null)
+                .show();
+    }
+
+    private void iconMenu(Screens.Item item, Shortcut sc) {
+        new AlertDialog.Builder(this)
+                .setTitle("Cambiar ícono")
+                .setItems(new String[]{"Elegir imagen de la galería", "Restablecer ícono"}, (d, i) -> {
+                    if (i == 0) {
+                        pendingIcon = item;
+                        Intent pick = new Intent(Intent.ACTION_GET_CONTENT)
+                                .setType("image/*")
+                                .addCategory(Intent.CATEGORY_OPENABLE);
+                        startActivityForResult(Intent.createChooser(pick, "Elegir ícono"), REQ_ICON);
+                    } else {
+                        if (!sc.icon.isEmpty()) new File(sc.icon).delete();
+                        item.data = sc.withIcon("").encode();
+                        pager.commit();
+                    }
+                })
+                .show();
+    }
+
+    private void storeIcon(Screens.Item item, Uri uri) {
+        try {
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            try (InputStream in = getContentResolver().openInputStream(uri)) {
+                BitmapFactory.decodeStream(in, null, bounds);
+            }
+            BitmapFactory.Options opts = new BitmapFactory.Options();
+            while (bounds.outWidth / (opts.inSampleSize + 1) > 600 && bounds.outHeight / (opts.inSampleSize + 1) > 600) {
+                opts.inSampleSize++;
+            }
+            if (opts.inSampleSize < 1) opts.inSampleSize = 1;
+            Bitmap bmp;
+            try (InputStream in = getContentResolver().openInputStream(uri)) {
+                bmp = BitmapFactory.decodeStream(in, null, opts);
+            }
+            if (bmp == null) throw new IllegalStateException("sin imagen");
+            int side = Math.min(bmp.getWidth(), bmp.getHeight());
+            Bitmap square = Bitmap.createBitmap(bmp, (bmp.getWidth() - side) / 2, (bmp.getHeight() - side) / 2, side, side);
+            Bitmap out = Bitmap.createScaledBitmap(square, 192, 192, true);
+            File file = new File(getFilesDir(), "icon_" + System.currentTimeMillis() + ".png");
+            try (FileOutputStream fos = new FileOutputStream(file)) {
+                out.compress(Bitmap.CompressFormat.PNG, 100, fos);
+            }
+            Shortcut sc = Shortcut.parse(item.data);
+            if (!sc.icon.isEmpty()) new File(sc.icon).delete();
+            item.data = sc.withIcon(file.getAbsolutePath()).encode();
+            pager.commit();
+        } catch (Exception e) {
+            Toast.makeText(this, "No pude usar esa imagen", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     void addWidget(AppWidgetProviderInfo info) {
         settings.hide();
         pendingWidget = widgets.allocate();
@@ -406,9 +523,12 @@ public class HomeActivity extends Activity {
             downRawX = e.getRawX();
             downRawY = e.getRawY();
             dragMode = MODE_NONE;
-            boolean free = !pager.isEditing() && !settings.isShown() && !drawer.isShown();
-            boolean blocked = dock.hit(downRawX, downRawY) || pager.hitWidget(downRawX, downRawY);
-            drawerCandidate = free && !blocked
+            boolean editing = pager.isEditing();
+            boolean modal = settings.isShown() || drawer.isShown();
+            boolean free = !modal;
+            boolean blocked = dock.hit(downRawX, downRawY)
+                    || (editing ? pager.hitElement(downRawX, downRawY) : pager.hitWidget(downRawX, downRawY));
+            drawerCandidate = free && !editing && !blocked
                     && prefs.gesture("g1_up").equals("drawer")
                     && prefs.drawerAnim().equals("bottom")
                     && !(terminal.hit(downRawX, downRawY) && terminal.scrollable());

@@ -5,6 +5,8 @@ import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
 import android.appwidget.AppWidgetHostView;
 import android.appwidget.AppWidgetProviderInfo;
+import android.graphics.Rect;
+import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
@@ -18,6 +20,8 @@ import java.util.Iterator;
 import java.util.List;
 
 final class Pager implements ElementView.Host {
+    private static final float EDIT_SCALE = 0.78f;
+
     private final HomeActivity act;
     private final Prefs prefs;
     private final AppIndex apps;
@@ -32,8 +36,10 @@ final class Pager implements ElementView.Host {
     private TextView counter;
     private PageLayout pageView;
     private PageLayout neighbor;
+    private PageLayout peekPrev;
+    private PageLayout peekNext;
     private int neighborIndex = -1;
-    private int swipeDir;
+    private int swipeDir = 1;
     private float swipeW = 1f;
     private Palette p;
     private boolean editing;
@@ -96,12 +102,24 @@ final class Pager implements ElementView.Host {
     void reload() {
         if (p == null) return;
         dropNeighbor();
+        dropPeeks();
         if (pageView != null) root.removeView(pageView);
-        pageView = build(screens.current);
+        pageView = build(screens.current, true);
         root.addView(pageView, 0, new FrameLayout.LayoutParams(-1, -1));
+        if (editing) makePeeks();
         updateDots();
         updateCounter();
         sizeWidgets();
+    }
+
+    void commit() {
+        screens.save();
+        reload();
+    }
+
+    void removeItem(Screens.Item item) {
+        screens.page().remove(item);
+        commit();
     }
 
     void setIme(boolean visible) {
@@ -117,31 +135,42 @@ final class Pager implements ElementView.Host {
     }
 
     void setEditing(boolean on) {
+        if (editing == on) return;
         editing = on;
         toolbar.setVisibility(on ? View.VISIBLE : View.GONE);
         if (pageView != null) {
-            for (int i = 0; i < pageView.getChildCount(); i++) {
-                ((ElementView) pageView.getChildAt(i)).setEditing(on, p.primary);
-            }
-            pageView.setGrid(on ? prefs.gridCols() : 0, prefs.gridRows(), Ui.alpha(p.textDim, 0x80));
+            makeChrome(pageView, on);
+            pageView.animate().scaleX(on ? EDIT_SCALE : 1f).scaleY(on ? EDIT_SCALE : 1f)
+                    .setDuration(260).setInterpolator(Ui.ease(act)).start();
+        }
+        if (on) {
+            makePeeks();
+            fade(peekPrev, true);
+            fade(peekNext, true);
+        } else {
+            dropNeighbor();
+            fadeOutPeeks();
         }
         updateCounter();
     }
 
     void beginSwipe() {
-        swipeW = Math.max(1f, root.getWidth());
+        swipeW = slot();
     }
 
     void swipeBy(float dx) {
         if (pageView == null || animating) return;
         int dir = dx < 0 ? 1 : -1;
+        swipeDir = dir;
         int want = screens.current + dir;
         boolean has = want >= 0 && want < screens.pages.size();
         if (has && (neighbor == null || neighborIndex != want)) prepareNeighbor(want, dir);
         if (!has) dropNeighbor();
         float shift = has ? dx : dx * 0.25f;
         pageView.setTranslationX(shift);
-        if (neighbor != null) neighbor.setTranslationX(shift + swipeDir * swipeW);
+        if (neighbor != null) neighbor.setTranslationX(shift + dir * swipeW);
+        PageLayout opp = opposite();
+        if (opp != null) opp.setTranslationX(shift - dir * swipeW);
     }
 
     void endSwipe(float vx) {
@@ -158,6 +187,7 @@ final class Pager implements ElementView.Host {
         if (target < 0 || target >= screens.pages.size()) return;
         beginSwipe();
         int dir = delta > 0 ? 1 : -1;
+        swipeDir = dir;
         prepareNeighbor(target, dir);
         neighbor.setTranslationX(dir * swipeW);
         settle(true);
@@ -242,12 +272,11 @@ final class Pager implements ElementView.Host {
     }
 
     boolean hitWidget(float x, float y) {
-        if (pageView == null) return false;
-        for (int i = 0; i < pageView.getChildCount(); i++) {
-            ElementView ev = (ElementView) pageView.getChildAt(i);
-            if (ev.item.kind.equals("widget") && Ui.hit(ev, x, y)) return true;
-        }
-        return false;
+        return hit(x, y, true);
+    }
+
+    boolean hitElement(float x, float y) {
+        return hit(x, y, false);
     }
 
     @Override
@@ -260,10 +289,16 @@ final class Pager implements ElementView.Host {
     @Override
     public void onLongPress(ElementView view) {
         if (editing) return;
-        if (view.item.kind.equals("terminal")) {
-            act.showSettings();
-        } else {
-            act.enterEdit();
+        switch (view.item.kind) {
+            case "terminal":
+                act.showSettings();
+                break;
+            case "app":
+                act.appMenu(view.item);
+                break;
+            default:
+                act.enterEdit();
+                break;
         }
     }
 
@@ -284,7 +319,29 @@ final class Pager implements ElementView.Host {
         reload();
     }
 
-    private PageLayout build(int index) {
+    private boolean hit(float x, float y, boolean widgetsOnly) {
+        if (pageView == null) return false;
+        Rect r = new Rect();
+        for (int i = 0; i < pageView.getChildCount(); i++) {
+            ElementView ev = (ElementView) pageView.getChildAt(i);
+            if (widgetsOnly && !ev.item.kind.equals("widget")) continue;
+            if (ev.getVisibility() == View.VISIBLE && ev.getGlobalVisibleRect(r) && r.contains((int) x, (int) y)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private float slot() {
+        float w = Math.max(1f, root.getWidth());
+        return editing ? w * EDIT_SCALE + Ui.dp(act, 14) : w;
+    }
+
+    private PageLayout opposite() {
+        return editing ? (swipeDir > 0 ? peekPrev : peekNext) : null;
+    }
+
+    private PageLayout build(int index, boolean interactive) {
         PageLayout page = new PageLayout(act);
         boolean pruned = false;
         for (Iterator<Screens.Item> it = screens.pages.get(index).iterator(); it.hasNext(); ) {
@@ -297,17 +354,25 @@ final class Pager implements ElementView.Host {
                 continue;
             }
             ElementView ev = new ElementView(act, item, content, this);
-            if (editing) ev.setEditing(true, p.primary);
-            if (ime && !item.kind.equals("terminal")) ev.setVisibility(View.INVISIBLE);
+            if (editing && interactive) ev.setEditing(true, p.primary);
+            if (ime && interactive && !item.kind.equals("terminal")) ev.setVisibility(View.INVISIBLE);
             page.addView(ev);
         }
         if (pruned) screens.save();
-        page.setFocusTerminal(ime && index == screens.current);
-        page.setGrid(editing ? prefs.gridCols() : 0, prefs.gridRows(), Ui.alpha(p.textDim, 0x80));
-        page.setOnLongClickListener(v -> {
-            if (!editing) act.showSettings();
-            return true;
-        });
+        page.setFocusTerminal(interactive && ime && index == screens.current);
+        page.setGrid(editing && interactive ? prefs.gridCols() : 0, prefs.gridRows(), Ui.alpha(p.textDim, 0x80));
+        if (interactive) {
+            page.setOnLongClickListener(v -> {
+                if (!editing) act.showSettings();
+                return true;
+            });
+        } else {
+            page.setPassive(true);
+        }
+        if (editing) {
+            page.setScaleX(EDIT_SCALE);
+            page.setScaleY(EDIT_SCALE);
+        }
         return page;
     }
 
@@ -318,25 +383,27 @@ final class Pager implements ElementView.Host {
             case "stats":
                 return stats.view();
             case "app":
-                return appView(item.data);
+                return appView(item);
             default:
                 AppWidgetProviderInfo info = widgets.manager().getAppWidgetInfo(item.widgetId);
                 return info == null ? null : widgets.host().createView(act, item.widgetId, info);
         }
     }
 
-    private View appView(String pkg) {
-        AppIndex.App app = apps.byPackage(pkg);
+    private View appView(Screens.Item item) {
+        Shortcut sc = Shortcut.parse(item.data);
+        AppIndex.App app = apps.byPackage(sc.pkg);
         if (app == null) return null;
         LinearLayout cell = new LinearLayout(act);
         cell.setOrientation(LinearLayout.VERTICAL);
         cell.setGravity(Gravity.CENTER);
         ImageView icon = new ImageView(act);
-        icon.setImageDrawable(icons.get(app, p));
+        Drawable custom = sc.icon.isEmpty() ? null : Drawable.createFromPath(sc.icon);
+        icon.setImageDrawable(custom != null ? custom : icons.get(app, p));
         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
         icon.setPadding(Ui.dp(act, 6), Ui.dp(act, 6), Ui.dp(act, 6), 0);
         cell.addView(icon, new LinearLayout.LayoutParams(-1, 0, 1f));
-        TextView label = Ui.text(act, app.label, 11, p.text);
+        TextView label = Ui.text(act, sc.label.isEmpty() ? app.label : sc.label, 11, p.text);
         label.setGravity(Gravity.CENTER);
         label.setMaxLines(1);
         label.setEllipsize(TextUtils.TruncateAt.END);
@@ -348,16 +415,89 @@ final class Pager implements ElementView.Host {
         return cell;
     }
 
+    private void makeChrome(PageLayout page, boolean on) {
+        for (int i = 0; i < page.getChildCount(); i++) {
+            ((ElementView) page.getChildAt(i)).setEditing(on, p.primary);
+        }
+        page.setGrid(on ? prefs.gridCols() : 0, prefs.gridRows(), Ui.alpha(p.textDim, 0x80));
+        page.setPassive(!on && false);
+    }
+
+    private void makePeeks() {
+        dropPeeks();
+        float s = slot();
+        if (screens.current > 0) {
+            peekPrev = build(screens.current - 1, false);
+            root.addView(peekPrev, 0, new FrameLayout.LayoutParams(-1, -1));
+            peekPrev.setTranslationX(-s);
+        }
+        if (screens.current < screens.pages.size() - 1) {
+            peekNext = build(screens.current + 1, false);
+            root.addView(peekNext, 0, new FrameLayout.LayoutParams(-1, -1));
+            peekNext.setTranslationX(s);
+        }
+    }
+
+    private void dropPeeks() {
+        if (peekPrev != null) root.removeView(peekPrev);
+        if (peekNext != null) root.removeView(peekNext);
+        peekPrev = null;
+        peekNext = null;
+    }
+
+    private void fade(PageLayout page, boolean in) {
+        if (page == null) return;
+        page.setAlpha(in ? 0f : 1f);
+        page.animate().alpha(in ? 1f : 0f).setDuration(240).setInterpolator(Ui.ease(act)).start();
+    }
+
+    private void fadeOutPeeks() {
+        PageLayout a = peekPrev;
+        PageLayout b = peekNext;
+        peekPrev = null;
+        peekNext = null;
+        for (PageLayout pg : new PageLayout[]{a, b}) {
+            if (pg == null) continue;
+            pg.animate().alpha(0f).setDuration(200).setInterpolator(Ui.ease(act))
+                    .withEndAction(() -> root.removeView(pg)).start();
+        }
+    }
+
     private void prepareNeighbor(int want, int dir) {
         dropNeighbor();
-        neighbor = build(want);
+        PageLayout adopted = null;
+        if (editing) {
+            if (want < screens.current && peekPrev != null) {
+                adopted = peekPrev;
+                peekPrev = null;
+            } else if (want > screens.current && peekNext != null) {
+                adopted = peekNext;
+                peekNext = null;
+            }
+        }
+        if (adopted != null) {
+            neighbor = adopted;
+        } else {
+            neighbor = build(want, true);
+            root.addView(neighbor, 0, new FrameLayout.LayoutParams(-1, -1));
+        }
         neighborIndex = want;
         swipeDir = dir;
-        root.addView(neighbor, 0, new FrameLayout.LayoutParams(-1, -1));
     }
 
     private void dropNeighbor() {
-        if (neighbor != null) root.removeView(neighbor);
+        if (neighbor != null) {
+            if (editing && neighborIndex >= 0) {
+                if (neighborIndex < screens.current) {
+                    peekPrev = neighbor;
+                } else {
+                    peekNext = neighbor;
+                }
+                neighbor.setTranslationX(neighborIndex < screens.current ? -slot() : slot());
+            } else {
+                root.removeView(neighbor);
+            }
+        }
         neighbor = null;
         neighborIndex = -1;
     }
@@ -365,6 +505,7 @@ final class Pager implements ElementView.Host {
     private void settle(boolean commit) {
         PageLayout current = pageView;
         PageLayout other = neighbor;
+        PageLayout opp = opposite();
         int newIndex = neighborIndex;
         int dir = swipeDir;
         float from = current.getTranslationX();
@@ -372,6 +513,7 @@ final class Pager implements ElementView.Host {
         animating = true;
         current.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         if (other != null) other.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+        if (opp != null) opp.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         ValueAnimator a = ValueAnimator.ofFloat(from, to);
         a.setDuration(Math.round(140 + 180 * Math.abs(to - from) / swipeW));
         a.setInterpolator(Ui.ease(act));
@@ -379,20 +521,28 @@ final class Pager implements ElementView.Host {
             float x = (Float) v.getAnimatedValue();
             current.setTranslationX(x);
             if (other != null) other.setTranslationX(x + dir * swipeW);
+            if (opp != null) opp.setTranslationX(x - dir * swipeW);
         });
         a.addListener(new AnimatorListenerAdapter() {
             @Override
             public void onAnimationEnd(Animator x) {
                 current.setLayerType(View.LAYER_TYPE_NONE, null);
                 if (other != null) other.setLayerType(View.LAYER_TYPE_NONE, null);
+                if (opp != null) opp.setLayerType(View.LAYER_TYPE_NONE, null);
                 if (commit && other != null) {
-                    root.removeView(current);
-                    pageView = other;
-                    other.setTranslationX(0f);
-                    screens.current = newIndex;
-                    screens.save();
+                    finishCommit(current, other, opp, newIndex, dir);
                 } else {
-                    if (other != null) root.removeView(other);
+                    if (other != null) {
+                        if (editing) {
+                            if (dir > 0) {
+                                peekNext = other;
+                            } else {
+                                peekPrev = other;
+                            }
+                        } else {
+                            root.removeView(other);
+                        }
+                    }
                     current.setTranslationX(0f);
                 }
                 neighbor = null;
@@ -404,6 +554,41 @@ final class Pager implements ElementView.Host {
             }
         });
         a.start();
+    }
+
+    private void finishCommit(PageLayout current, PageLayout other, PageLayout opp, int newIndex, int dir) {
+        pageView = other;
+        other.setTranslationX(0f);
+        screens.current = newIndex;
+        screens.save();
+        if (!editing) {
+            root.removeView(current);
+            return;
+        }
+        if (opp != null) root.removeView(opp);
+        for (int i = 0; i < current.getChildCount(); i++) {
+            ((ElementView) current.getChildAt(i)).setEditing(false, 0);
+        }
+        current.setGrid(0, prefs.gridRows(), 0);
+        current.setPassive(true);
+        current.setOnLongClickListener(null);
+        current.setLongClickable(false);
+        makeChrome(other, true);
+        other.setPassive(false);
+        int far = newIndex + dir;
+        PageLayout farPeek = null;
+        if (far >= 0 && far < screens.pages.size()) {
+            farPeek = build(far, false);
+            root.addView(farPeek, 0, new FrameLayout.LayoutParams(-1, -1));
+            farPeek.setTranslationX(dir * swipeW);
+        }
+        if (dir > 0) {
+            peekPrev = current;
+            peekNext = farPeek;
+        } else {
+            peekNext = current;
+            peekPrev = farPeek;
+        }
     }
 
     private void sizeWidgets() {

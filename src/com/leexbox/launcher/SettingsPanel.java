@@ -228,6 +228,7 @@ final class SettingsPanel {
         add(body, pill("Cuadrícula: " + Pickers.gridLabel(prefs), false, v -> Pickers.grid(act)), 8);
         add(body, pill("Añadir widget…", false, v -> Pickers.addWidget(act)), 8);
         add(body, pill("Añadir app a esta pantalla…", false, v -> Pickers.addApp(act)), 8);
+        add(body, pill("Añadir LeexScripts Mini", false, v -> act.addScripts()), 8);
         add(body, pill("Pantallas…", false, v -> Pickers.screens(act)), 8);
         add(body, toggle("Barra CPU / RAM / temp", prefs.showStats(), on -> act.setStats(on)), 12);
     }

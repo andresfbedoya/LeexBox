@@ -68,8 +68,17 @@ final class ElementView extends FrameLayout {
     }
 
     @Override
+    public boolean dispatchTouchEvent(MotionEvent e) {
+        if (!editing && !item.kind.equals("scripts")) trackLongPress(e);
+        return super.dispatchTouchEvent(e);
+    }
+
+    @Override
     public boolean onInterceptTouchEvent(MotionEvent e) {
-        if (editing) return false;
+        return !editing && fired;
+    }
+
+    private void trackLongPress(MotionEvent e) {
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
                 fired = false;
@@ -82,6 +91,7 @@ final class ElementView extends FrameLayout {
                     removeCallbacks(longPress);
                 }
                 break;
+            case MotionEvent.ACTION_POINTER_DOWN:
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL:
                 removeCallbacks(longPress);
@@ -89,7 +99,6 @@ final class ElementView extends FrameLayout {
             default:
                 break;
         }
-        return fired;
     }
 
     private static float clamp(float v, float lo, float hi) {

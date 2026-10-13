@@ -144,7 +144,7 @@ final class TerminalModule {
 
     void welcome() {
         if (!prefs.welcome()) return;
-        say("LeexBox 1.5 listo. Escribe el nombre de una app para abrirla, o `help`.", false);
+        say("LeexBox 1.5.1 listo. Escribe el nombre de una app para abrirla, o `help`.", false);
         say("Llena el dock con: dock add <app>  (máx. 5)", false);
     }
 

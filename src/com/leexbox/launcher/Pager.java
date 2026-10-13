@@ -238,6 +238,23 @@ final class Pager implements ElementView.Host {
         reload();
     }
 
+    void addScripts() {
+        int cols = prefs.gridCols();
+        int rows = prefs.gridRows();
+        Screens.Item it;
+        if (cols > 0 && rows > 0) {
+            int wc = Math.min(cols, 4);
+            int hc = Math.min(rows, 3);
+            float[] pos = screens.firstFree(screens.page(), cols, rows, wc, hc);
+            it = new Screens.Item("scripts", -1, "[]", pos[0], pos[1], wc / (float) cols, hc / (float) rows);
+        } else {
+            it = new Screens.Item("scripts", -1, "[]", 0.04f, 0.1f, 0.92f, 0.3f);
+        }
+        screens.page().add(it);
+        screens.save();
+        reload();
+    }
+
     void addApp(String pkg) {
         DisplayMetrics dm = act.getResources().getDisplayMetrics();
         float pw = Math.max(1f, root.getWidth());
@@ -384,6 +401,8 @@ final class Pager implements ElementView.Host {
                 return stats.view();
             case "app":
                 return appView(item);
+            case "scripts":
+                return new ScriptsWidget(act, item, p).view();
             default:
                 AppWidgetProviderInfo info = widgets.manager().getAppWidgetInfo(item.widgetId);
                 return info == null ? null : widgets.host().createView(act, item.widgetId, info);

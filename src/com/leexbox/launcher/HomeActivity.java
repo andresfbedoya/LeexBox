@@ -336,6 +336,34 @@ public class HomeActivity extends Activity {
         recreate();
     }
 
+    void addScripts() {
+        settings.hide();
+        pager.addScripts();
+    }
+
+    void commitLayout() {
+        pager.commit();
+    }
+
+    void runScript(String name, String commands, boolean background) {
+        if (checkSelfPermission(TermuxBridge.PERMISSION) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{TermuxBridge.PERMISSION}, 1);
+            return;
+        }
+        if (!background) {
+            if (!TermuxBridge.openSession(this, commands, TermuxBridge.HOME)) {
+                Toast.makeText(this, "No pude abrir Termux", Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
+        Toast.makeText(this, "Ejecutando " + name + "…", Toast.LENGTH_SHORT).show();
+        TermuxBridge.run(this, "cd \"$HOME\"\n" + commands + "\n", (so, se, code) -> {
+            Toast.makeText(this, (code == 0 ? "✓ " : "✗ ") + name + " (" + code + ")", Toast.LENGTH_LONG).show();
+            String text = (so + (se.isEmpty() ? "" : "\n" + se)).trim();
+            terminal.say("[" + name + "] código " + code + (text.isEmpty() ? "" : "\n" + text), code != 0);
+        });
+    }
+
     void appMenu(Screens.Item item) {
         Shortcut sc = Shortcut.parse(item.data);
         AppIndex.App app = apps.byPackage(sc.pkg);

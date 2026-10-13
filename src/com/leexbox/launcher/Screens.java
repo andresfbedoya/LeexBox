@@ -28,7 +28,7 @@ final class Screens {
         }
 
         boolean resizable() {
-            return kind.equals("terminal") || kind.equals("stats") || kind.equals("widget");
+            return kind.equals("terminal") || kind.equals("stats") || kind.equals("widget") || kind.equals("scripts");
         }
 
         float minW() {
